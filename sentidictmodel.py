@@ -14,7 +14,7 @@ train_data = pd.read_csv('./middle/train_data.csv')['data']
 train_label = pd.read_csv('./Train/Train_DataSet_Label.csv')['label']
 pred_label = train_data.apply(mark)
 print('Macro-F1={}'.format(f1_score(train_label,pred_label,average='macro')))
-test = pd.read_csv('Test_DataSet.csv')
+test = pd.read_csv('./middle/test_data.csv')
 test_id = test['id']
 test_data = test['data']
 test_label = test_data.apply(mark)
