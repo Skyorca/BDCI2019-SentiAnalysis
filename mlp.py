@@ -12,13 +12,13 @@ from tensorflow.keras.layers import Dense, Dropout
 from tensorflow.keras.models import Sequential
 
 EPOCHS = 20
-BATCH_SIZE = 64
-MAX_NUM_WORDS=10000
-DIM1 = 1024
-DIM2 = 512
+BATCH_SIZE = 128
+MAX_NUM_WORDS=50000
+DIM1 = 5120
+DIM2 = 1024
 DIM3 = 128
 
-df = pd.read_csv('middle/deep_train_data.csv')
+df = pd.read_csv('middle/train_data.csv')
 df['data'].fillna('0',inplace=True) #填充缺失值很重要！
 train_data = df['data'].values
 train_labels = pd.read_csv('Train/Train_DataSet_Label.csv')['label'].values
@@ -29,7 +29,7 @@ word_index = tokenizer.word_index
 print('Found %s unique tokens.' % len(word_index))
 data = tokenizer.sequences_to_matrix(sequences, mode='tfidf')
 labels = to_categorical(np.asarray(train_labels),num_classes=3)
-print(labels)
+
 
 X_train, X_test, Y_train, Y_test = train_test_split(data,labels, test_size = 0.3, random_state = 42)
 
@@ -80,7 +80,7 @@ plt.show()
 
 # predict #
 print('Begin predicting...')
-df2 = pd.read_csv('middle/deep_test_data.csv')
+df2 = pd.read_csv('middle/test_data.csv')
 df2['data'].fillna('0',inplace=True) #填充缺失值很重要！
 test_data_ = df2['data'].values
 test_id = df2['id']
