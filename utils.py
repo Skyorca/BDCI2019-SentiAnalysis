@@ -59,7 +59,7 @@ def mark(content):
     输入： content字符串,已经把标题和内容合并并且分好词，并没有对标题和内容分开调用。
     输出：{0,1,2}
     ''' 
-    assert(type(content)==str)
+    if type(content)!=str: return 1
     #加载字典
     pos_ = pd.read_csv('senti-dict/pos.txt',header=None)
     pos = list(pos_[0].values) #必须要有默认的列索引为数字0
@@ -121,13 +121,13 @@ def mark(content):
        # if words[i] in bsn_dict: value += bsn_dict[words[i]]
 
     if value>=theta: 
-        print('label = 0')
+        #print('label = 0')
         return 0
     elif value>-theta and value<theta: 
-        print('label = 1')
+        #print('label = 1')
         return 1 #允许微扰
     else: 
-        print('label = 2')
+        #print('label = 2')
         return  2
 
 
