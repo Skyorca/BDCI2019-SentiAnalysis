@@ -10,25 +10,6 @@ from sklearn.svm import SVC
 from sklearn.model_selection import GridSearchCV
 import xgboost as xgb
 
-def preprocess(file,cat):
-    '''
-    清洗、分词、合并标题和内容并整理成每个文章一个列表的形式
-    2608  4817  1153 由于原内容过多所以占用了两行，把多余的一行文本去掉了（better solution?）
-    '''
-    train = pd.read_csv(file) #id-title-content, 7340 samples
-    train_id = train['id']
-    train_title = train['title']
-    train_content = train['content']
-    print('Cleaning data...')
-    train_title = train_title.apply(lambda x: clean(x))
-    train_content = train_content.apply(lambda x: clean(x))
-    print('Building Wordbag of title...') #一分钟把所有都处理完了，挺快的
-    train_title = train_title.apply(lambda x: to_wordbag(x))
-    print('Building Wordbag of content...')
-    train_content = train_content.apply(lambda x: to_wordbag(x))
-    train_data = train_title+train_content
-    out = pd.DataFrame({'id':train_id, 'data':train_data})
-    out.to_csv('middle/ensemble_{}_data.csv'.format(cat),index=False)
 
 
 def random_forest(x_train, y_train, x_test, y_test):
@@ -111,7 +92,7 @@ def train_and_predict():
     词袋的输入：元素是分词好的字符串的列表/设置属性为str的csv的一列，先转成values
     '''
     print('Training TF-IDF...')
-    train_data = pd.read_csv('middle/ensemble_train_data.csv')['data']
+    train_data = pd.read_csv('./middle/train_data.csv')['data']
     vectorizer = CountVectorizer(analyzer = "word",   \
                                 tokenizer = None,    \
                                 preprocessor = None, \
@@ -128,7 +109,7 @@ def train_and_predict():
     train_tfidf = transformer.fit_transform(train_data_features)
     #print(vectorizer.vocabulary_)   单词-编号的词典
     #print(vectorizer.get_feature_names()) 所有的单词
-    train_lbl = pd.read_csv('Train/Train_DataSet_Label.csv')['label'].values
+    train_lbl = pd.read_csv('./data/Train/Train_DataSet_Label.csv')['label'].values
     x_train,x_test,y_train,y_test=train_test_split(train_tfidf, train_lbl,test_size=0.3,random_state=0)
     print("Splitting Done")
 
@@ -142,7 +123,7 @@ def train_and_predict():
     #预测并输出
     test_id = pd.read_csv("Test_DataSet.csv")['id']
     print('Doing predictions on real test-data')
-    test_data = pd.read_csv('middle/ensemble_test_data.csv')['data']
+    test_data = pd.read_csv('middle/test_data.csv')['data']
     test_data_features = vectorizer.fit_transform(test_data.values.astype('str')) #sparse
     result = grid.predict(test_data_features)
     output = pd.DataFrame( data={'id':test_id,"sentiment":result} )
@@ -156,8 +137,8 @@ def train_and_predict():
 
 
 if __name__ == "__main__":
-    #preprocess("Train/Train_DataSet.csv",'train')
-   # preprocess_test('Test_DataSet.csv','Test')
+    #preprocess("./data/Train/Train_DataSet.csv",'train')
+    #preprocess_test('./data/Test_DataSet.csv','Test')
     train_and_predict()
     
 
