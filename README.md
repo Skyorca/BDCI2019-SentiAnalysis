@@ -1,24 +1,16 @@
-#train 7340
+For BDCI-2019 Internet news Sentiment Analysis Task, we implements several baselines here
 
-train label: 0:763 /1:3646/2:2931
+Deep models are implemented with TF 2.0
 
-#test 7356
+1. sentiment dict
+2. majority voting with TF-IDF+SVM/RandomForest/MultinormalNB and XGB
+3. MLP
+4. textCNN
+5. 2-BiLSTM
+6. 2-BiLSTM+textCNN
+7. 2-BiLSTM+Attention
+8. DCNN(not implemented yet)
 
-baseline一： 情感词典模型
-情感词典模型依赖大量的人工标注，需要准备比较全面的正面词词典、负面词词典、程度词词典等。对出现在文本中的每个词，根据打分规则进行打分。
-同时设置阈值\theta 和-\theta，划分为>\theta, <-\theta, -\theta~\theta三段即文本的三个类别。
-准确率大概在40%左右。
+deep models are parallelly run with GPU
 
-baseline二： 机器学习模型
-通过TFIDF方法将文本转换为特征值矩阵，之后输入分类器中进行学习。注意文本的预处理，以及分类器超参数的网格搜索。实验采用了三种分类器：
-SVM RandomForest XGBoost。要注意过拟合问题，即预测时严重倾向某一类别。
-准确率在50%—~60%
-
-baseline三：多层感知机MLP
-基于tensorflow2.0编写的多层感知机模型。仍有大量超参数如层数、隐层单元数等需要调整。
-
-baseline四：基于LSTM及其变种的模型
-基于tensorflow2.0编写的LSTM及其变种。需要研读前沿的方法使用更复杂的模型。
-
-方案五：BERT
-基于bert及其变种的模型。该模型较大，训练时间长。
+to be updated...
