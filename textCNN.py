@@ -37,7 +37,7 @@ from sklearn.model_selection import train_test_split
 from tensorflow.keras.layers import Dense, Dropout, BatchNormalization
 from tensorflow.keras.models import Sequential
 from sklearn.utils import class_weight
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score,accuracy_score
 from batchgenerater import BatchGenerator
 from utils import preprocess_v3
 
@@ -90,14 +90,14 @@ class MyConvLayer(tf.keras.Model):
             # MAXPOOLING  
             x_pooled = tf.nn.max_pool(x, ksize=[1, self.sequence_length-filter_size, 1, 1], strides=[1, 1, 1, 1], padding='VALID', name="pool")
             pooled_outputs.append(x_pooled)
-            print(x_pooled.shape)
+           # print(x_pooled.shape)
 
         # COMBINING POOLED FEATURES
         num_filters_total = self.num_filters * len(self.filter_sizes)
         self.h_pool = tf.concat(pooled_outputs, 3)
-        print('concat', self.h_pool.shape)
+        #print('concat', self.h_pool.shape)
         self.h_pool_flat = tf.reshape(self.h_pool, [-1, num_filters_total])
-        print('reshape', self.h_pool_flat.shape)
+        #print('reshape', self.h_pool_flat.shape)
         return self.h_pool_flat
 
 def create_model(filter_sizes, num_filters, embed_size,sequence_length):
@@ -117,44 +117,54 @@ def create_model(filter_sizes, num_filters, embed_size,sequence_length):
     print(model.summary())
     return model
 
+def main():
+    X_train, X_, Y_train, Y_ = train_test_split(train_data,train_labels, test_size = 0.2, random_state = 42)
+    X_val, X_test, Y_val, Y_test = train_test_split(X_, Y_, test_size = 0.1, random_state = 42)
 
-X_train, X_, Y_train, Y_ = train_test_split(train_data,train_labels, test_size = 0.2, random_state = 42)
-X_val, X_test, Y_val, Y_test = train_test_split(X_, Y_, test_size = 0.1, random_state = 42)
+    if tf.test.is_gpu_available():
+        with tf.device('GPU:0'):
+            lstmcnn = create_model(filter_sizes, num_filters, EMBEDDING_SIZE, MAX_SEQUENCE_LENGTH) #因为是lstm后接cnn所以输入第三维不是词向量维数而是biLSTM输出维数2*units
+            lstmcnn.compile(loss=tf.keras.losses.CategoricalCrossentropy(label_smoothing=LABEL_SMOOTH), optimizer='adam', metrics=[tf.keras.metrics.CategoricalAccuracy()])
+            train_gen = BatchGenerator(X_train, Y_train, input_dim=X_train.shape[1], n_classes=n_classes, batch_size=BATCH_SIZE  )
+            val_gen = BatchGenerator(X_val, Y_val, input_dim=X_val.shape[1], n_classes=n_classes, batch_size=BATCH_SIZE )
+            history = lstmcnn.fit_generator(generator=train_gen, validation_data=val_gen, epochs=EPOCHS, callbacks=[tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3, min_delta=0.0001)],\
+                                        workers=6, use_multiprocessing=True)
+    lstmcnn.save_weights('./lstm_weights.h5', overwrite=True)
 
+    plt.title('Loss')
+    plt.plot(history.history['loss'], label='train')
+    plt.plot(history.history['val_loss'], label='val')
+    plt.legend()
+    plt.show()
 
-lstmcnn = create_model(filter_sizes, num_filters, EMBEDDING_SIZE, MAX_SEQUENCE_LENGTH) #因为是lstm后接cnn所以输入第三维不是词向量维数而是biLSTM输出维数2*units
-lstmcnn.compile(loss=tf.keras.losses.CategoricalCrossentropy(label_smoothing=LABEL_SMOOTH), optimizer='adam', metrics=[tf.keras.metrics.CategoricalAccuracy()])
-train_gen = BatchGenerator(X_train, Y_train, input_dim=X_train.shape[1], n_classes=n_classes, batch_size=BATCH_SIZE  )
-val_gen = BatchGenerator(X_val, Y_val, input_dim=X_val.shape[1], n_classes=n_classes, batch_size=BATCH_SIZE )
-history = lstmcnn.fit_generator(generator=train_gen, validation_data=val_gen, epochs=EPOCHS, callbacks=[tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3, min_delta=0.0001)],\
-                            workers=6, use_multiprocessing=True)
-lstmcnn.save_weights('./lstm_weights.h5', overwrite=True)
+    plt.title('Accuracy')
+    plt.plot(history.history['categorical_accuracy'], label='train')
+    plt.plot(history.history['val_categorical_accuracy'], label='test')
+    plt.legend()
+    plt.show()
 
-plt.title('Loss')
-plt.plot(history.history['loss'], label='train')
-plt.plot(history.history['val_loss'], label='val')
-plt.legend()
-plt.show()
+    y_pred = lstmcnn.predict(X_test)
+    y_pred = y_pred.argmax(axis = 1)
+    print('Testing Macro-F1={}'.format(f1_score(Y_test, y_pred, average='macro')))
+    print('Testing acc={}'.format(accuracy_score(Y_test, y_pred)))
 
-plt.title('Accuracy')
-plt.plot(history.history['categorical_accuracy'], label='train')
-plt.plot(history.history['val_categorical_accuracy'], label='test')
-plt.legend()
-plt.show()
+    """
+    # 在测试集上检测
+    y_pred = lstmcnn.predict(X_test)
+    y_pred = y_pred.argmax(axis = 1)
+    print('Testing Macro-F1={}'.format(f1_score(Y_test, y_pred, average='macro')))
 
+    print('Begin predicting...')
+    pred = lstmcnn.predict(test_data)
+    result= pred.argmax(axis=1)
+    print(result)
+    output = pd.DataFrame( data={'id':test_id,"label":result} )
+    # Use pandas to write the comma-separated output file
+    output.to_csv("中国抖学院-奶茶技术研究所-final.csv", index=False)
+    print("Done")
+    """
 
-# 在测试集上检测
-y_pred = lstmcnn.predict(X_test)
-y_pred = y_pred.argmax(axis = 1)
-print('Testing Macro-F1={}'.format(f1_score(Y_test, y_pred, average='macro')))
-
-print('Begin predicting...')
-pred = lstmcnn.predict(test_data)
-result= pred.argmax(axis=1)
-print(result)
-output = pd.DataFrame( data={'id':test_id,"label":result} )
-# Use pandas to write the comma-separated output file
-output.to_csv("中国抖学院-奶茶技术研究所-final.csv", index=False)
-print("Done")
+if __name__ == "__main__":
+    main()
 
 
