@@ -52,7 +52,7 @@ filter_sizes=[2,3,4]
 num_filters=128
 LSTM_UNITS = 100
 
-train_data, train_labels, test_id, test_data, embeddings_matrix = preprocess_v3()
+
 
 #textCNN的输入是二维张量（batch, sequence_length），先加入一个embedding layer扩展为(batch, sequence_length, embed_length)
 #再扩展一个维度变成(batch, sequence_length, embed_length，1)以适配四维卷积。
@@ -96,76 +96,79 @@ class MyConvLayer(tf.keras.Model):
         self.h_pool_flat = tf.reshape(self.h_pool, [-1, num_filters_total])
         return self.h_pool_flat
 
-def create_model(filter_sizes, num_filters, embed_size,sequence_length):
-    model = tf.keras.Sequential([
-    tf.keras.layers.Embedding(input_dim=len(embeddings_matrix),  # 字典长度
-                                output_dim = EMBEDDING_SIZE,  # 词向量 长度
-                                weights=[embeddings_matrix],  # 重点：预训练的词向量系数
-                                input_length=MAX_SEQUENCE_LENGTH,  # 每句话的 最大长度（必须padding） 
-                                trainable=False,  # 是否在 训练的过程中 更新词向量
-                                name= 'embedding_layer'
-                                ),
-    tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(LSTM_UNITS, \
-                                                       kernel_regularizer=reg, \
-                                                       recurrent_regularizer=reg, \
-                                                       activity_regularizer=reg, \
-                                                       dropout=0.5, \
-                                                       recurrent_dropout=0.5, return_sequences=True)
-                                 ), #Return the full sequences of successive outputs for each timestep (a 3D tensor of shape (batch_size, timesteps, output_features)).
-     tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(LSTM_UNITS, \
-                                                       kernel_regularizer=reg, \
-                                                       recurrent_regularizer=reg, \
-                                                       activity_regularizer=reg, \
-                                                       dropout=0.5, \
-                                                       recurrent_dropout=0.5, return_sequences=True)
-                                 ), 
-    LstmExpand(),
-    MyConvLayer(filter_sizes, num_filters, embed_size,sequence_length),
-    Dropout(0.5),
-    tf.keras.layers.Dense(n_classes, activation='softmax')
-    ])
-    print(model.summary())
-    return model
 
+def main():
+    train_data, train_labels, test_id, test_data, embeddings_matrix = preprocess_v3()
+    X_train, X_, Y_train, Y_ = train_test_split(train_data,train_labels, test_size = 0.2, random_state = 42)
+    X_val, X_test, Y_val, Y_test = train_test_split(X_, Y_, test_size = 0.1, random_state = 42)
+    def create_model(filter_sizes, num_filters, embed_size,sequence_length):
+        model = tf.keras.Sequential([
+        tf.keras.layers.Embedding(input_dim=len(embeddings_matrix),  # 字典长度
+                                    output_dim = EMBEDDING_SIZE,  # 词向量 长度
+                                    weights=[embeddings_matrix],  # 重点：预训练的词向量系数
+                                    input_length=MAX_SEQUENCE_LENGTH,  # 每句话的 最大长度（必须padding） 
+                                    trainable=False,  # 是否在 训练的过程中 更新词向量
+                                    name= 'embedding_layer'
+                                    ),
+        tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(LSTM_UNITS, \
+                                                        kernel_regularizer=reg, \
+                                                        recurrent_regularizer=reg, \
+                                                        activity_regularizer=reg, \
+                                                        dropout=0.5, \
+                                                        recurrent_dropout=0.5, return_sequences=True)
+                                    ), #Return the full sequences of successive outputs for each timestep (a 3D tensor of shape (batch_size, timesteps, output_features)).
+        LstmExpand(),
+        MyConvLayer(filter_sizes, num_filters, embed_size,sequence_length),
+        Dropout(0.5),
+        tf.keras.layers.Dense(n_classes, activation='softmax')
+        ])
+        print(model.summary())
+        return model
 
-X_train, X_, Y_train, Y_ = train_test_split(train_data,train_labels, test_size = 0.2, random_state = 42)
-X_val, X_test, Y_val, Y_test = train_test_split(X_, Y_, test_size = 0.1, random_state = 42)
+    if tf.test.is_gpu_available():
+        with tf.device('GPU:0'):
+            lstmcnn = create_model(filter_sizes, num_filters, 200, MAX_SEQUENCE_LENGTH) #因为是lstm后接cnn所以输入第三维不是词向量维数而是biLSTM输出维数2*units
+            lstmcnn.compile(loss=tf.keras.losses.CategoricalCrossentropy(label_smoothing=LABEL_SMOOTH), optimizer='adam', metrics=[tf.keras.metrics.CategoricalAccuracy()])
+            train_gen = BatchGenerator(X_train, Y_train, input_dim=X_train.shape[1], n_classes=n_classes, batch_size=BATCH_SIZE  )
+            val_gen = BatchGenerator(X_val, Y_val, input_dim=X_val.shape[1], n_classes=n_classes, batch_size=BATCH_SIZE )
+            history = lstmcnn.fit_generator(generator=train_gen, validation_data=val_gen, epochs=EPOCHS, callbacks=[tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3, min_delta=0.0001)],\
+                                        workers=6, use_multiprocessing=True)
 
+    plt.title('Loss')
+    plt.plot(history.history['loss'], label='train')
+    plt.plot(history.history['val_loss'], label='val')
+    plt.legend()
+    plt.show()
 
-lstmcnn = create_model(filter_sizes, num_filters, 200, MAX_SEQUENCE_LENGTH) #因为是lstm后接cnn所以输入第三维不是词向量维数而是biLSTM输出维数2*units
-lstmcnn.compile(loss=tf.keras.losses.CategoricalCrossentropy(label_smoothing=LABEL_SMOOTH), optimizer='adam', metrics=[tf.keras.metrics.CategoricalAccuracy()])
-train_gen = BatchGenerator(X_train, Y_train, input_dim=X_train.shape[1], n_classes=n_classes, batch_size=BATCH_SIZE  )
-val_gen = BatchGenerator(X_val, Y_val, input_dim=X_val.shape[1], n_classes=n_classes, batch_size=BATCH_SIZE )
-history = lstmcnn.fit_generator(generator=train_gen, validation_data=val_gen, epochs=EPOCHS, callbacks=[tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3, min_delta=0.0001)],\
-                            workers=6, use_multiprocessing=True)
-lstmcnn.save_weights('./lstm_weights.h5', overwrite=True)
+    plt.title('Accuracy')
+    plt.plot(history.history['categorical_accuracy'], label='train')
+    plt.plot(history.history['val_categorical_accuracy'], label='test')
+    plt.legend()
+    plt.show()
 
-plt.title('Loss')
-plt.plot(history.history['loss'], label='train')
-plt.plot(history.history['val_loss'], label='val')
-plt.legend()
-plt.show()
+    """
+    # 在测试集上检测
+    y_pred = lstmcnn.predict(X_test)
+    y_pred = y_pred.argmax(axis = 1)
+    print('Testing Macro-F1={}'.format(f1_score(Y_test, y_pred, average='macro')))
 
-plt.title('Accuracy')
-plt.plot(history.history['categorical_accuracy'], label='train')
-plt.plot(history.history['val_categorical_accuracy'], label='test')
-plt.legend()
-plt.show()
+    print('Begin predicting...')
+    pred = lstmcnn.predict(test_data)
+    result= pred.argmax(axis=1)
+    print(result)
+    output = pd.DataFrame( data={'id':test_id,"label":result} )
+    # Use pandas to write the comma-separated output file
+    output.to_csv("中国抖学院-奶茶技术研究所-final.csv", index=False)
+    print("Done")
+    """
 
+    y_pred = lstm.predict(X_test)
+    y_pred = y_pred.argmax(axis = 1)
+    print('Testing Macro-F1={}'.format(f1_score(Y_test, y_pred, average='macro')))
+    print('Testing acc={}'.format(accuracy_score(Y_test, y_pred)))
 
-# 在测试集上检测
-y_pred = lstmcnn.predict(X_test)
-y_pred = y_pred.argmax(axis = 1)
-print('Testing Macro-F1={}'.format(f1_score(Y_test, y_pred, average='macro')))
-
-print('Begin predicting...')
-pred = lstmcnn.predict(test_data)
-result= pred.argmax(axis=1)
-print(result)
-output = pd.DataFrame( data={'id':test_id,"label":result} )
-# Use pandas to write the comma-separated output file
-output.to_csv("中国抖学院-奶茶技术研究所-final.csv", index=False)
-print("Done")
+if __name__ == "__main__":
+    main()
 
 
 
