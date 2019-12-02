@@ -5,6 +5,11 @@ import numpy as np
 import re
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from gensim.models import word2vec, KeyedVectors
+from sklearn.manifold import TSNE
+from sklearn.cluster import KMeans
+from sklearn.decomposition import TruncatedSVD
+import matplotlib.pyplot as plt
+
 
 #参数集,window=2#
 w1 = 3 #most-pos
@@ -155,6 +160,157 @@ def mark(content):
         #print('label = 2')
         return  2
 
+############################################# 机器学习模型的函数 ################################################
+def BagofClf(features, labels):
+    """
+    整合多个线性分类器，选最优三个投票决定。分类器的超参记得搜索
+    """
+    rf = RandomForestClassifier(n_estimators = 70, oob_score=True)
+    svc = LinearSVC(class_weight="balanced") #assume this is important
+    nb  = MultinomialNB()
+    lr =  LogisticRegression(random_state=0)
+    models = [rf, svc, nb, lr]
+    """
+    print("Doing model selection...WAIT")
+    CV = 5
+    cv_df = pd.DataFrame(index=range(CV * len(models)))
+    entries = []
+    for model in models:
+        model_name = model.__class__.__name__
+        accuracies = cross_val_score(model, features, labels, scoring='accuracy', cv=CV)
+        for fold_idx, accuracy in enumerate(accuracies):
+            entries.append((model_name, fold_idx, accuracy))
+    cv_df = pd.DataFrame(entries, columns=['model_name', 'fold_idx', 'accuracy'])
+    sns.boxplot(x='model_name', y='accuracy', data=cv_df)
+    sns.stripplot(x='model_name', y='accuracy', data=cv_df, 
+                size=8, jitter=True, edgecolor="gray", linewidth=2)
+    plt.show()
+    """
+    print("Doing majority voting...WAIT")
+    x_train,x_test,y_train,y_test=train_test_split(features, labels,test_size=0.1,random_state=44)
+    _rf = rf.fit(x_train, y_train )
+    _svm = svc.fit(x_train, y_train)
+    _lr  = lr.fit(x_train, y_train)
+    pred1 = _rf.predict(x_test)
+    pred2 = _svm.predict(x_test)
+    pred3 = _lr.predict(x_test)
+    def __majority_element(a):
+        c = Counter(a)
+        value, count = c.most_common()[0]
+        if count > 1:
+            return value
+        else:
+            return a[0]
+
+    merged_predictions = [[s[0],s[1],s[2]] for s in zip(pred1,pred2,pred3)]
+    majority_prediction = [__majority_element(p) for p in merged_predictions]
+    f1score = f1_score(y_test, majority_prediction, average='macro')
+    acc     = accuracy_score(y_test, majority_prediction)
+    print("Macro F1-score=",f1score)
+    print('acc=',acc)
+
+
+def random_forest(x_train, y_train, x_test, y_test):
+    '''
+    使用随机森林模型,以后也要带上参数搜索
+    '''
+    print('Using Random-Forest')
+    #训练随机森林,如何达到较好效果
+    forest = RandomForestClassifier(n_estimators = 70, oob_score=True) 
+    forest = forest.fit(x_train, y_train )
+    print ("random forest is Done")
+    y_pred = forest.predict(x_test)
+    print("our test predictions Done") 
+    score = f1_score(y_test, y_pred, average='macro')
+    print('our test Macro-F1=',score)
+
+def svm(x_train, y_train):
+    '''
+    此时搜索超参会带来过拟合？
+    '''
+    print('Using SVM')
+    grid = GridSearchCV(SVC(kernel='rbf'), param_grid={"degree":[2,3,4]}, scoring='f1_macro', cv=4)
+    grid.fit(x_train, y_train)
+    print("The best parameters are %s with a score of %0.2f"% (grid.best_params_, grid.best_score_))
+    print ("svm is Done")
+    return grid
+
+
+def xgbclassifier(x_train, y_train):
+    '''
+    网格搜索，则不需要额外划分测试集训练集
+    '''
+    print('Using XGBoost')
+    parameters = {
+              'max_depth': [5, 10, 15, 20, 25],
+              'learning_rate': [0.01, 0.02, 0.05, 0.1, 0.15],
+              'n_estimators': [500, 1000, 2000, 3000, 5000],
+              'min_child_weight': [0, 2, 5, 10, 20],
+              'max_delta_step': [0, 0.2, 0.6, 1, 2],
+              'subsample': [0.6, 0.7, 0.8, 0.85, 0.95],
+              'colsample_bytree': [0.5, 0.6, 0.7, 0.8, 0.9],
+              'reg_alpha': [0, 0.25, 0.5, 0.75, 1],
+              'reg_lambda': [0.2, 0.4, 0.6, 0.8, 1],
+              'scale_pos_weight': [0.2, 0.4, 0.6, 0.8, 1]}
+
+    xlf = xgb.XGBClassifier(max_depth=10,
+                learning_rate=0.01,
+                n_estimators=2000,
+                silent=False,
+                objective='multi:softmax',
+                n_jobs=4,
+                num_class=3,
+                gamma=0,
+                min_child_weight=1,
+                max_delta_step=0,
+                subsample=0.85,
+                colsample_bytree=0.7,
+                colsample_bylevel=1,
+                reg_alpha=0,
+                reg_lambda=1,
+                scale_pos_weight=1,
+                seed=1440,
+                missing=None)
+                
+    # 有了gridsearch我们便不需要fit函数
+    gsearch = GridSearchCV(xlf, param_grid=parameters, scoring='f1_macro', cv=4)
+    gsearch.fit(x_train, y_train)
+
+    print("Best score: %0.3f" % gsearch.best_score_)
+    print("Best parameters set:")
+    best_parameters = gsearch.best_estimator_.get_params()
+    for param_name in sorted(parameters.keys()):
+        print("\t%s: %r" % (param_name, best_parameters[param_name]))
+    return gsearch
+
+
+def KMeansVisual(features, labels):
+    """KMeans聚类可视化"""
+    pca = TruncatedSVD()
+    pca.fit(features)
+    new_feats = pca.transform(features)
+    clf = KMeans(n_clusters=3)
+    clf.fit(new_feats)
+    cents = clf.cluster_centers_#质心
+    _labels = clf.labels_#样本点被分配到的簇的索引
+    #画出聚类结果，每一类用一种颜色
+    colors = ['b','g','r']
+    plt.figure(figsize=(60,60))
+    for i in range(3):
+        index = np.nonzero(_labels==i)[0]
+        x0 = new_feats[index,0]
+        x1 = new_feats[index,1]
+        y_i = labels[index]
+        for j in range(len(x0)):
+            plt.text(x0[j],x1[j],str(int(y_i[j])),color=colors[i],fontdict={'weight': 'bold', 'size': 20})
+            plt.scatter(cents[i,0],cents[i,1],marker='x',color=colors[i],linewidths=12)
+    plt.title("3-KMeans")
+    plt.axis([-0.1,0.5,-0.5,0.5])
+    plt.show()
+
+
+
+
 
 
 def to_wordbag(x):
@@ -207,7 +363,7 @@ def preprocess_v3():
     #构造包含所有词语的 list，以及初始化 “词语-序号”字典 和 “词向量”矩阵
     vocab_list = [word for word, Vocab in Word2VecModel.wv.vocab.items()]# 存储 所有的 词语
     word_index = {" ": 0}# 初始化 `词-词索引` ，后期 tokenize 语料库就是用该词典。
-    word_vector = {} # 初始化`词-词向量`字典
+    #word_vector = {} # 初始化`词-词向量`字典
     # 初始化存储所有向量的大矩阵，留意其中多一位（首行），词向量全为 0，用于 padding补零。
     # 行数 为 所有单词数+1 比如 10000+1 ； 列数为 词向量“维度”比如256。
     embeddings_matrix = np.zeros((len(vocab_list) + 1, Word2VecModel.vector_size))
@@ -216,8 +372,8 @@ def preprocess_v3():
     for i in range(len(vocab_list)):
         word = vocab_list[i]  # 每个词语
         word_index[word] = i + 1 # 词语：词索引
-        word_vector[word] = Word2VecModel.wv[word] # 词语：词向量
-        embeddings_matrix[i + 1] = Word2VecModel.wv[word]  # 词向量矩阵
+        #word_vector[word] = Word2VecModel.wv[word] # 词语：词向量
+        embeddings_matrix[i + 1] = Word2VecModel.wv[word]  # 词向量矩阵，因为词索引是从1开始的所以也要从第二行开始填充
     #print(embeddings_matrix.shape)
 
     ## 第二步 把每个文档转换为词索引句阵，每个单词以索引表示
