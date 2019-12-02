@@ -14,7 +14,7 @@ from sklearn.utils import class_weight
 from batchgenerater import BatchGenerator
 
 #preprocess("./data/Train/Train_DataSet.csv",'train')
-#preprocess_test('./data/Test_DataSet.csv','Test')
+#preprocess('./data/Test_DataSet.csv','test')
 
 EPOCHS = 20
 BATCH_SIZE = 32
