@@ -53,6 +53,7 @@ class BatchGenerator(tf.keras.utils.Sequence):
             # Store sample
             X[i,] = ID
 
+        #在这里转换成One-hot变量
         return X, tf.keras.utils.to_categorical(np.asarray(self.y), num_classes=self.n_classes)
 
 
